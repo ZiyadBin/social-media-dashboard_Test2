@@ -1,9 +1,3 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[2]:
-
-
 import pandas as pd
 from dash import Dash, html, dcc, Input, Output, callback_context
 import plotly.express as px
@@ -19,6 +13,15 @@ district_codes = {
     "Kannur": "KN",
     "Thrissur": "TR",
     "Palakkad": "PKD"
+}
+
+# District coordinates for Kerala map
+district_coords = {
+    "Kozhikode": {"lat": 11.25, "lon": 75.77},
+    "Malappuram": {"lat": 11.07, "lon": 76.07},
+    "Kannur": {"lat": 11.87, "lon": 75.37},
+    "Thrissur": {"lat": 10.52, "lon": 76.21},
+    "Palakkad": {"lat": 10.77, "lon": 76.65}
 }
 
 # Create dropdown options for month and platform
@@ -392,8 +395,8 @@ app.layout = html.Div(
             })
         ], style={"display": "flex", "justifyContent": "space-between", "gap": "15px"}),
 
-        # Engagement Rate Chart - Conditionally displayed
-        html.Div(id="engagement_section", style={"marginTop": "20px"})
+        # Map or Engagement Chart - Conditionally displayed
+        html.Div(id="map_engagement_section", style={"marginTop": "20px"})
     ]
 )
 
@@ -460,7 +463,7 @@ def update_district_selection(all_clicks, kz_clicks, mlp_clicks, kn_clicks, tr_c
     [Output("platform_chart", "figure"),
      Output("platform_cards", "children"),
      Output("kpi_section", "children"),
-     Output("engagement_section", "children")],
+     Output("map_engagement_section", "children")],
     [Input("district_store", "data"),
      Input("month_filter", "value"),
      Input("platform_filter", "value")]
@@ -559,9 +562,81 @@ def update_dashboard(selected_district, selected_month, selected_platform):
         
         platform_cards_content = rows
 
-    # Engagement Rate Chart - Only show when a single district is selected
-    engagement_section = []
-    if selected_district != "All" and selected_district is not None:
+    # MAP or ENGAGEMENT CHART - Conditionally displayed
+    map_engagement_section = []
+    
+    if selected_district == "All":
+        # SHOW MAP when "All" districts selected
+        if not filtered_df.empty:
+            # Prepare data for map
+            map_data = []
+            for district in district_coords.keys():
+                district_data = filtered_df[filtered_df['District'] == district]
+                if not district_data.empty:
+                    for platform in ['Facebook', 'Instagram', 'YouTube', 'WhatsApp']:
+                        platform_district_data = district_data[district_data['Platform'] == platform]
+                        if not platform_district_data.empty:
+                            map_data.append({
+                                'District': district,
+                                'Platform': platform,
+                                'Total_Interactions': platform_district_data['Total_Interactions'].sum(),
+                                'Total_Views': platform_district_data['Total_Views'].sum(),
+                                'lat': district_coords[district]['lat'],
+                                'lon': district_coords[district]['lon']
+                            })
+            
+            if map_data:
+                map_df = pd.DataFrame(map_data)
+                
+                # Create bubble map
+                platform_map = px.scatter_mapbox(
+                    map_df,
+                    lat="lat",
+                    lon="lon",
+                    size="Total_Interactions",
+                    color="Platform",
+                    hover_name="District",
+                    hover_data={
+                        "Total_Interactions": True,
+                        "Total_Views": True,
+                        "Platform": True,
+                        "lat": False,
+                        "lon": False
+                    },
+                    color_discrete_map=platform_colors,
+                    size_max=30,
+                    zoom=7,
+                    height=400,
+                    title="Platform Penetration Across Districts"
+                )
+                
+                platform_map.update_layout(
+                    mapbox_style="open-street-map",
+                    plot_bgcolor="white",
+                    paper_bgcolor="white",
+                    font_color="#2F2F4D",
+                    title_font_color="#2F2F4D",
+                    title_x=0.5,
+                    margin={"r":0,"t":40,"l":0,"b":0}
+                )
+                
+                map_engagement_section = html.Div([
+                    dcc.Graph(
+                        id="platform_map", 
+                        figure=platform_map, 
+                        style={"height": "450px"}
+                    )
+                ], style={
+                    "width": "100%", 
+                    "padding": "15px",
+                    "background": "white",
+                    "borderRadius": "12px",
+                    "border": "1px solid #E6E6FA",
+                    "boxShadow": "0 2px 8px rgba(47, 47, 77, 0.05)"
+                })
+    
+    else:
+        # SHOW ENGAGEMENT CHART when single district selected
         engagement_chart = px.scatter(
             filtered_df,
             x="Total_Posts",
@@ -581,11 +656,11 @@ def update_dashboard(selected_district, selected_month, selected_platform):
             title_x=0.5
         )
         
-        engagement_section = html.Div([
+        map_engagement_section = html.Div([
             dcc.Graph(
                 id="engagement_chart", 
                 figure=engagement_chart, 
-                style={"height": "350px"}
+                style={"height": "400px"}
             )
         ], style={
             "width": "100%", 
@@ -596,15 +671,8 @@ def update_dashboard(selected_district, selected_month, selected_platform):
             "boxShadow": "0 2px 8px rgba(47, 47, 77, 0.05)"
         })
 
-    return platform_chart, platform_cards_content, kpis, engagement_section
+    return platform_chart, platform_cards_content, kpis, map_engagement_section
 
 # Railway-compatible setup
 if __name__ == "__main__":
     app.run(debug=False, host='0.0.0.0', port=8080)
-
-
-# In[ ]:
-
-
-
-
