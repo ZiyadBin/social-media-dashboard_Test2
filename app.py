@@ -105,6 +105,22 @@ except Exception as e:
 
 app = Dash(__name__)
 
+# Store available districts globally to create dynamic callbacks
+available_districts = df['District'].unique() if not df.empty else []
+district_codes = {}
+for district in available_districts:
+    if district == "State Entry":
+        district_codes[district] = "ST"
+    elif len(district) <= 3:
+        district_codes[district] = district.upper()
+    else:
+        words = district.split()
+        if len(words) > 1:
+            code = ''.join([word[0] for word in words])
+            district_codes[district] = code.upper()
+        else:
+            district_codes[district] = district[:3].upper()
+
 # KPI card function with matching gradients
 def kpi_card(title, value, color_scheme):
     gradient_colors = {
@@ -476,7 +492,8 @@ app.layout = html.Div(
     [Output('data_store', 'data'),
      Output('data_status', 'children'),
      Output('month_filter', 'options'),
-     Output('platform_filter', 'options')],
+     Output('platform_filter', 'options'),
+     Output('district_buttons_container', 'children')],
     [Input('refresh_button', 'n_clicks')]
 )
 def refresh_data(n_clicks):
@@ -491,21 +508,35 @@ def refresh_data(n_clicks):
         platform_options = [{"label": p, "value": p} for p in fresh_df["Platform"].unique()]
         platform_options.insert(0, {"label": "All Platforms", "value": "All"})
         
+        # Update global districts
+        global available_districts, district_codes
+        available_districts = fresh_df['District'].unique()
+        district_codes = {}
+        for district in available_districts:
+            if district == "State Entry":
+                district_codes[district] = "ST"
+            elif len(district) <= 3:
+                district_codes[district] = district.upper()
+            else:
+                words = district.split()
+                if len(words) > 1:
+                    code = ''.join([word[0] for word in words])
+                    district_codes[district] = code.upper()
+                else:
+                    district_codes[district] = district[:3].upper()
+        
+        # Create buttons
+        buttons = create_district_buttons('All')
+        
         # Return success
-        return fresh_df.to_dict('records'), "", month_options, platform_options
+        return fresh_df.to_dict('records'), "", month_options, platform_options, buttons
         
     except Exception as e:
         # Return error message
         error_msg = str(e)
-        return [], error_msg, [], []
+        return [], error_msg, [], [], []
 
-# Callback to generate district buttons dynamically
-@app.callback(
-    Output('district_buttons_container', 'children'),
-    [Input('district_store', 'data'),
-     Input('data_store', 'data')]
-)
-def update_district_buttons(selected_district, data_dict):
+def create_district_buttons(selected_district):
     active_style = {
         "width": "50px", "height": "50px", "borderRadius": "50%",
         "border": "2px solid #7A288A", 
@@ -529,65 +560,53 @@ def update_district_buttons(selected_district, data_dict):
     # All button
     buttons.append(html.Button(
         "All", 
-        id="btn_All", 
+        id={"type": "district-button", "index": "All"}, 
         n_clicks=0,
         style=active_style if selected_district == "All" else inactive_style
     ))
     
-    # Get current data
-    if data_dict:
-        current_df = pd.DataFrame(data_dict)
-        available_districts = current_df['District'].unique()
-        
-        # Create district codes dynamically
-        district_codes = {}
-        for district in available_districts:
-            if district == "State Entry":
-                district_codes[district] = "ST"
-            elif len(district) <= 3:
-                district_codes[district] = district.upper()
-            else:
-                words = district.split()
-                if len(words) > 1:
-                    code = ''.join([word[0] for word in words])
-                    district_codes[district] = code.upper()
-                else:
-                    district_codes[district] = district[:3].upper()
-        
-        # District buttons - only show districts that have data
-        for district in available_districts:
-            if district in district_codes:
-                buttons.append(html.Button(
-                    district_codes[district], 
-                    id=f"btn_{district}", 
-                    n_clicks=0,
-                    style=active_style if selected_district == district else inactive_style
-                ))
+    # District buttons
+    for district in available_districts:
+        if district in district_codes:
+            buttons.append(html.Button(
+                district_codes[district], 
+                id={"type": "district-button", "index": district}, 
+                n_clicks=0,
+                style=active_style if selected_district == district else inactive_style
+            ))
     
     return buttons
 
-# SIMPLE FIX: Proper callback for district selection
+# Callback to update district selection and buttons
 @app.callback(
-    Output('district_store', 'data'),
-    [Input('btn_All', 'n_clicks')] + 
-    [Input('district_buttons_container', 'children')],
+    [Output('district_store', 'data'),
+     Output('district_buttons_container', 'children', allow_duplicate=True)],
+    [Input({'type': 'district-button', 'index': 'All'}, 'n_clicks'),
+     Input({'type': 'district-button', 'index': ALL}, 'n_clicks')],
+    [State('district_store', 'data')],
     prevent_initial_call=True
 )
-def update_district_selection(all_clicks, buttons_children):
+def update_district_selection(all_clicks, district_clicks, current_district):
     ctx = callback_context
     if not ctx.triggered:
-        return 'All'
+        return 'All', create_district_buttons('All')
     
-    # Get the button that was clicked
+    # Get which button was clicked
     button_id = ctx.triggered[0]['prop_id'].split('.')[0]
     
-    if button_id == 'btn_All':
-        return 'All'
-    elif button_id.startswith('btn_'):
-        selected_district = button_id.replace('btn_', '')
-        return selected_district
+    # Parse the button ID to get the district
+    if button_id == '{"index":"All","type":"district-button"}':
+        selected_district = "All"
+    else:
+        # Extract district name from the button ID
+        import json
+        button_data = json.loads(button_id)
+        selected_district = button_data['index']
     
-    return 'All'
+    # Update buttons with new selection
+    buttons = create_district_buttons(selected_district)
+    
+    return selected_district, buttons
 
 # Main dashboard callback
 @app.callback(
@@ -758,8 +777,9 @@ def update_dashboard(selected_district, selected_month, selected_platform, data_
     [Output('data_store', 'data', allow_duplicate=True),
      Output('data_status', 'children', allow_duplicate=True),
      Output('month_filter', 'options', allow_duplicate=True),
-     Output('platform_filter', 'options', allow_duplicate=True)],
-    Input('data_store', 'data'),
+     Output('platform_filter', 'options', allow_duplicate=True),
+     Output('district_buttons_container', 'children', allow_duplicate=True)],
+    Input('refresh_button', 'data'),
     prevent_initial_call=True
 )
 def initial_load(_):
@@ -774,13 +794,16 @@ def initial_load(_):
         platform_options = [{"label": p, "value": p} for p in fresh_df["Platform"].unique()]
         platform_options.insert(0, {"label": "All Platforms", "value": "All"})
         
+        # Create buttons
+        buttons = create_district_buttons('All')
+        
         # Return success
-        return fresh_df.to_dict('records'), "", month_options, platform_options
+        return fresh_df.to_dict('records'), "", month_options, platform_options, buttons
         
     except Exception as e:
         # Return error message
         error_msg = str(e)
-        return [], error_msg, [], []
+        return [], error_msg, [], [], []
 
 # Railway-compatible setup
 if __name__ == "__main__":
