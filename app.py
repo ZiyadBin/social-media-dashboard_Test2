@@ -104,13 +104,9 @@ except Exception as e:
     df = pd.read_excel("districts_social_dummy_data.xlsx")
 
 # Create district codes (first 2-3 letters)
-district_codes = {
-    "Kozhikode": "KZ",
-    "Malappuram": "MLP", 
-    "Kannur": "KN",
-    "Thrissur": "TR",
-    "Palakkad": "PKD"
-}
+# Instead of hardcoded district_codes and district_coords:
+district_codes = {district: generate_code(district) for district in df["District"].unique()}
+district_coords = {district: get_coordinates(district) for district in df["District"].unique()}
 
 # District coordinates for Kerala map
 district_coords = {
