@@ -86,24 +86,14 @@ def load_data():
     If fails, raises an error.
     """
     try:
-        print("📥 Fetching data from Google Sheets...")
         df_wide = read_google_sheet_as_df(GOOGLE_SHEET_URL)
-        print("✅ Google Sheets data loaded successfully!")
-        
         df = transform_wide_to_long(df_wide)
-        print("✅ Data transformed to long format!")
-        
-        print(f"📊 Loaded {len(df)} records")
-        print(f"🏛️  Districts: {df['District'].unique()}")
-        print(f"📅 Months: {df['Month'].unique()}")
-        
         return df
         
     except Exception as e:
-        print(f"❌ ERROR: Could not load Google Sheet - {e}")
-        raise Exception("Please check your data connection. Unable to load data from Google Sheets.")
+        raise Exception("❌ Please check your data connection. Unable to load data from Google Sheets.")
 
-# Load data
+# Load data initially
 try:
     df = load_data()
 except Exception as e:
@@ -112,30 +102,6 @@ except Exception as e:
         'Month', 'District', 'Platform', 'Total_Posts', 
         'Total_Interactions', 'Total_Views', 'Followers_Gained', 'Engagement_Rate'
     ])
-    print("⚠️  Using empty dataset due to loading error")
-
-# Create district codes dynamically from available data
-available_districts = df['District'].unique() if not df.empty else []
-district_codes = {}
-for district in available_districts:
-    if district == "State Entry":
-        district_codes[district] = "ST"
-    elif len(district) <= 3:
-        district_codes[district] = district.upper()
-    else:
-        words = district.split()
-        if len(words) > 1:
-            code = ''.join([word[0] for word in words])
-            district_codes[district] = code.upper()
-        else:
-            district_codes[district] = district[:3].upper()
-
-# Create dropdown options for month and platform
-month_options = [{"label": str(m), "value": str(m)} for m in df["Month"].fillna("Unknown").unique()]
-month_options.insert(0, {"label": "All Months", "value": "All"})
-
-platform_options = [{"label": p, "value": p} for p in df["Platform"].unique()]
-platform_options.insert(0, {"label": "All Platforms", "value": "All"})
 
 app = Dash(__name__)
 
@@ -358,6 +324,22 @@ app.layout = html.Div(
         # Error message (hidden by default)
         html.Div(id="error_message", style={"display": "none"}),
         
+        # Refresh button to load latest data
+        html.Div([
+            html.Button("🔄 Refresh Data", 
+                       id="refresh_button",
+                       n_clicks=0,
+                       style={
+                           "background": "#7A288A",
+                           "color": "white",
+                           "border": "none",
+                           "padding": "8px 16px",
+                           "borderRadius": "6px",
+                           "cursor": "pointer",
+                           "fontSize": "12px"
+                       })
+        ], style={"textAlign": "right", "marginBottom": "10px"}),
+        
         # District buttons on right side
         html.Div(
             id="district_buttons_container",
@@ -390,12 +372,11 @@ app.layout = html.Div(
                     "fontSize": "28px"
                 }),
 
-        # Data status indicator
+        # Data status indicator (only shows error)
         html.Div(id="data_status", style={
             "textAlign": "center", 
             "marginBottom": "10px",
             "fontSize": "14px",
-            "color": "#666"
         }),
 
         # Filters
@@ -404,7 +385,7 @@ app.layout = html.Div(
                 html.Label("Month:", style={"fontWeight": "500", "marginBottom": "5px", "color": "#2F2F4D", "fontSize": "14px"}),
                 dcc.Dropdown(
                     id="month_filter", 
-                    options=month_options, 
+                    options=[], 
                     value="All", 
                     clearable=False,
                     style={
@@ -419,7 +400,7 @@ app.layout = html.Div(
                 html.Label("Platform:", style={"fontWeight": "500", "marginBottom": "5px", "color": "#2F2F4D", "fontSize": "14px"}),
                 dcc.Dropdown(
                     id="platform_filter", 
-                    options=platform_options, 
+                    options=[], 
                     value="All", 
                     clearable=False,
                     style={
@@ -433,6 +414,7 @@ app.layout = html.Div(
 
         # Hidden store for district selection
         dcc.Store(id='district_store', data='All'),
+        dcc.Store(id='data_store'),  # Store for current data
 
         # KPI Section
         html.Div(id="kpi_section", style={
@@ -496,14 +478,41 @@ app.layout = html.Div(
     ]
 )
 
+# Callback to load fresh data when refresh button is clicked
+@app.callback(
+    [Output('data_store', 'data'),
+     Output('data_status', 'children'),
+     Output('month_filter', 'options'),
+     Output('platform_filter', 'options')],
+    [Input('refresh_button', 'n_clicks')]
+)
+def refresh_data(n_clicks):
+    try:
+        # Load fresh data from Google Sheets
+        fresh_df = load_data()
+        
+        # Update dropdown options
+        month_options = [{"label": str(m), "value": str(m)} for m in fresh_df["Month"].fillna("Unknown").unique()]
+        month_options.insert(0, {"label": "All Months", "value": "All"})
+
+        platform_options = [{"label": p, "value": p} for p in fresh_df["Platform"].unique()]
+        platform_options.insert(0, {"label": "All Platforms", "value": "All"})
+        
+        # Return success
+        return fresh_df.to_dict('records'), "", month_options, platform_options
+        
+    except Exception as e:
+        # Return error message
+        error_msg = str(e)
+        return [], error_msg, [], []
+
 # Callback to generate district buttons dynamically
 @app.callback(
-    [Output('district_buttons_container', 'children'),
-     Output('data_status', 'children')],
+    Output('district_buttons_container', 'children'),
     [Input('district_store', 'data'),
-     Input('district_store', 'data')]  # Double input to trigger on load
+     Input('data_store', 'data')]
 )
-def update_district_buttons(selected_district, _):
+def update_district_buttons(selected_district, data_dict):
     active_style = {
         "width": "50px", "height": "50px", "borderRadius": "50%",
         "border": "2px solid #7A288A", 
@@ -532,43 +541,60 @@ def update_district_buttons(selected_district, _):
         style=active_style if selected_district == "All" else inactive_style
     ))
     
-    # District buttons - only show districts that have data
-    available_districts = df['District'].unique() if not df.empty else []
-    for district in available_districts:
-        if district in district_codes:
-            buttons.append(html.Button(
-                district_codes[district], 
-                id=f"btn_{district}", 
-                n_clicks=0,
-                style=active_style if selected_district == district else inactive_style
-            ))
+    # Get current data
+    if data_dict:
+        current_df = pd.DataFrame(data_dict)
+        available_districts = current_df['District'].unique()
+        
+        # Create district codes dynamically
+        district_codes = {}
+        for district in available_districts:
+            if district == "State Entry":
+                district_codes[district] = "ST"
+            elif len(district) <= 3:
+                district_codes[district] = district.upper()
+            else:
+                words = district.split()
+                if len(words) > 1:
+                    code = ''.join([word[0] for word in words])
+                    district_codes[district] = code.upper()
+                else:
+                    district_codes[district] = district[:3].upper()
+        
+        # District buttons - only show districts that have data
+        for district in available_districts:
+            if district in district_codes:
+                buttons.append(html.Button(
+                    district_codes[district], 
+                    id=f"btn_{district}", 
+                    n_clicks=0,
+                    style=active_style if selected_district == district else inactive_style
+                ))
     
-    # Data status message
-    if df.empty:
-        status_msg = "❌ Please check your data connection. Unable to load data from Google Sheets."
-    else:
-        district_count = len(available_districts)
-        total_records = len(df)
-        status_msg = f"✅ Loaded {total_records} records from {district_count} districts"
-    
-    return buttons, status_msg
+    return buttons
 
 # Callback to update district selection
 @app.callback(
     Output('district_store', 'data'),
     [Input(f"btn_All", 'n_clicks')] + 
-    [Input(f"btn_{district}", 'n_clicks') for district in district_codes.keys()],
+    [Input('data_store', 'data')],  # This will trigger when data updates
     prevent_initial_call=True
 )
-def update_district_selection(all_clicks, *district_clicks):
+def update_district_selection(all_clicks, data_dict):
     ctx = callback_context
     if not ctx.triggered:
         return 'All'
     
+    # Get the button that was clicked
     button_id = ctx.triggered[0]['prop_id'].split('.')[0]
-    selected_district = button_id.replace('btn_', '')
     
-    return selected_district
+    if button_id == 'data_store':
+        # If data was updated, keep current selection or default to 'All'
+        return 'All'
+    else:
+        # If a button was clicked, update selection
+        selected_district = button_id.replace('btn_', '')
+        return selected_district
 
 # Main dashboard callback
 @app.callback(
@@ -578,10 +604,24 @@ def update_district_selection(all_clicks, *district_clicks):
      Output("engagement_chart", "figure")],
     [Input("district_store", "data"),
      Input("month_filter", "value"),
-     Input("platform_filter", "value")]
+     Input("platform_filter", "value"),
+     Input("data_store", "data")]
 )
-def update_dashboard(selected_district, selected_month, selected_platform):
-    filtered_df = df.copy()
+def update_dashboard(selected_district, selected_month, selected_platform, data_dict):
+    if not data_dict:
+        # No data available
+        empty_fig = px.bar(title="No data available")
+        empty_fig.update_layout(
+            plot_bgcolor="white",
+            paper_bgcolor="white",
+            font_color="#2F2F4D",
+            title_font_color="#2F2F4D",
+            title_x=0.5
+        )
+        return empty_fig, html.Div("No data available", style={"textAlign": "center", "color": "#999"}), [], empty_fig
+    
+    # Convert stored data back to DataFrame
+    filtered_df = pd.DataFrame(data_dict)
     
     # Apply filters
     if selected_district != "All":
@@ -713,6 +753,35 @@ def update_dashboard(selected_district, selected_month, selected_platform):
         )
 
     return platform_chart, platform_cards_content, kpis, engagement_chart
+
+# Initial data load callback
+@app.callback(
+    [Output('data_store', 'data', allow_duplicate=True),
+     Output('data_status', 'children', allow_duplicate=True),
+     Output('month_filter', 'options', allow_duplicate=True),
+     Output('platform_filter', 'options', allow_duplicate=True)],
+    Input('data_store', 'data'),
+    prevent_initial_call=True
+)
+def initial_load(_):
+    try:
+        # Load fresh data from Google Sheets
+        fresh_df = load_data()
+        
+        # Update dropdown options
+        month_options = [{"label": str(m), "value": str(m)} for m in fresh_df["Month"].fillna("Unknown").unique()]
+        month_options.insert(0, {"label": "All Months", "value": "All"})
+
+        platform_options = [{"label": p, "value": p} for p in fresh_df["Platform"].unique()]
+        platform_options.insert(0, {"label": "All Platforms", "value": "All"})
+        
+        # Return success
+        return fresh_df.to_dict('records'), "", month_options, platform_options
+        
+    except Exception as e:
+        # Return error message
+        error_msg = str(e)
+        return [], error_msg, [], []
 
 # Railway-compatible setup
 if __name__ == "__main__":
