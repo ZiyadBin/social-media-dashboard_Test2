@@ -1,10 +1,107 @@
+import re
 import pandas as pd
 from dash import Dash, html, dcc, Input, Output, callback_context
 import plotly.express as px
-import math
 
-# Load your dataset
-df = pd.read_excel("districts_social_dummy_data.xlsx")
+# --- CONFIG: Google Sheet link (the one you provided)
+GOOGLE_SHEET_URL = "https://docs.google.com/spreadsheets/d/1QyeUhUye7O9p29GT3arc70hmMT42XWOnpXeGrtLtC5M/edit?usp=sharing"
+# If your sheet's tab (gid) is not 0, replace the gid below with the correct number:
+DEFAULT_SHEET_GID = "0"
+
+def extract_sheet_id(url: str) -> str:
+    """Extract spreadsheet id from a standard Google Sheets URL."""
+    m = re.search(r"/d/([a-zA-Z0-9-_]+)", url)
+    if not m:
+        raise ValueError("Could not extract sheet id from URL.")
+    return m.group(1)
+
+def read_google_sheet_as_df(sheet_url: str, gid: str = DEFAULT_SHEET_GID) -> pd.DataFrame:
+    """
+    Read a Google Sheet tab as a pandas DataFrame using the CSV export link.
+    The sheet must be viewable publicly or shared appropriately.
+    """
+    sheet_id = extract_sheet_id(sheet_url)
+    export_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
+    df = pd.read_csv(export_url)
+    return df
+
+def transform_wide_to_long(df_wide: pd.DataFrame) -> pd.DataFrame:
+    """
+    Transform the wide Google-Form style sheet into the long format expected by the dashboard:
+    Timestamp, District, Month, Platform, Total_Posts, Total_Interactions, Total_Views, Followers_Gained, Engagement_Rate
+    """
+    platforms = ['Facebook', 'Instagram', 'YouTube', 'WhatsApp']
+    rows = []
+
+    # Ensure core columns exist
+    for col in ["Timestamp", "District", "Month"]:
+        if col not in df_wide.columns:
+            # If missing, add with default empty values to avoid crashes
+            df_wide[col] = pd.NA
+
+    for _, r in df_wide.iterrows():
+        base_timestamp = r.get("Timestamp")
+        base_district = r.get("District")
+        base_month = r.get("Month")
+
+        for p in platforms:
+            # Build wide column names
+            col_posts = f"{p} - Total Posts"
+            col_inter = f"{p} - Total Interactions"
+            col_views = f"{p} - Total Views"
+            col_followers = f"{p} - Followers Gained"
+
+            # Safely fetch values (if column missing, treat as 0)
+            total_posts = pd.to_numeric(r.get(col_posts, 0), errors="coerce")
+            total_interactions = pd.to_numeric(r.get(col_inter, 0), errors="coerce")
+            total_views = pd.to_numeric(r.get(col_views, 0), errors="coerce")
+            followers_gained = pd.to_numeric(r.get(col_followers, 0), errors="coerce")
+
+            # Fill NaN with 0 for numeric fields
+            total_posts = int(0 if pd.isna(total_posts) else total_posts)
+            total_interactions = int(0 if pd.isna(total_interactions) else total_interactions)
+            total_views = int(0 if pd.isna(total_views) else total_views)
+            followers_gained = int(0 if pd.isna(followers_gained) else followers_gained)
+
+            # Compute engagement rate safely
+            if total_views > 0:
+                engagement_rate = (total_interactions / total_views) * 100
+            else:
+                engagement_rate = 0.0
+
+            rows.append({
+                "Timestamp": base_timestamp,
+                "District": base_district,
+                "Month": base_month,
+                "Platform": p,
+                "Total_Posts": total_posts,
+                "Total_Interactions": total_interactions,
+                "Total_Views": total_views,
+                "Followers_Gained": followers_gained,
+                "Engagement_Rate": engagement_rate
+            })
+
+    df_long = pd.DataFrame(rows)
+    # Optional: convert Timestamp to datetime if possible
+    try:
+        df_long["Timestamp"] = pd.to_datetime(df_long["Timestamp"], errors="coerce")
+    except Exception:
+        pass
+
+    # Fill missing District/Month with placeholder to avoid filter issues
+    df_long["District"] = df_long["District"].fillna("Unknown")
+    df_long["Month"] = df_long["Month"].fillna("Unknown")
+
+    return df_long
+
+# --- Load & transform data from Google Sheet
+try:
+    df_wide = read_google_sheet_as_df(GOOGLE_SHEET_URL, gid=DEFAULT_SHEET_GID)
+    df = transform_wide_to_long(df_wide)
+except Exception as e:
+    # If reading the sheet fails (network / permission), fallback to local Excel (your dummy)
+    print(f"Warning: could not load Google Sheet ({e}). Falling back to local Excel.")
+    df = pd.read_excel("districts_social_dummy_data.xlsx")
 
 # Create district codes (first 2-3 letters)
 district_codes = {
@@ -24,8 +121,8 @@ district_coords = {
     "Palakkad": {"lat": 10.77, "lon": 76.65}
 }
 
-# Create dropdown options for month and platform
-month_options = [{"label": m, "value": m} for m in df["Month"].unique()]
+# Create dropdown options for month and platform (built from transformed df)
+month_options = [{"label": m, "value": m} for m in df["Month"].fillna("Unknown").unique()]
 month_options.insert(0, {"label": "All Months", "value": "All"})
 
 platform_options = [{"label": p, "value": p} for p in df["Platform"].unique()]
