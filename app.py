@@ -1,6 +1,6 @@
 import re
 import pandas as pd
-from dash import Dash, html, dcc, Input, Output, callback_context
+from dash import Dash, html, dcc, Input, Output, callback_context, State, ALL
 import plotly.express as px
 
 # --- CONFIG: Google Sheet link
@@ -487,6 +487,47 @@ app.layout = html.Div(
     ]
 )
 
+def create_district_buttons(selected_district):
+    active_style = {
+        "width": "50px", "height": "50px", "borderRadius": "50%",
+        "border": "2px solid #7A288A", 
+        "background": "linear-gradient(135deg, #7A288A 0%, #9D4BB5 100%)",
+        "color": "white", "fontWeight": "600", "fontSize": "12px",
+        "margin": "8px 0", "cursor": "pointer",
+        "boxShadow": "0 2px 8px rgba(122, 40, 138, 0.3)"
+    }
+    
+    inactive_style = {
+        "width": "50px", "height": "50px", "borderRadius": "50%",
+        "border": "2px solid #E6E6FA", "background": "white",
+        "color": "#7A288A", "fontWeight": "600", "fontSize": "12px",
+        "margin": "8px 0", "cursor": "pointer",
+        "boxShadow": "0 2px 6px rgba(47, 47, 77, 0.1)",
+        "transition": "all 0.3s ease"
+    }
+    
+    buttons = []
+    
+    # All button
+    buttons.append(html.Button(
+        "All", 
+        id={"type": "district-button", "index": "All"}, 
+        n_clicks=0,
+        style=active_style if selected_district == "All" else inactive_style
+    ))
+    
+    # District buttons
+    for district in available_districts:
+        if district in district_codes:
+            buttons.append(html.Button(
+                district_codes[district], 
+                id={"type": "district-button", "index": district}, 
+                n_clicks=0,
+                style=active_style if selected_district == district else inactive_style
+            ))
+    
+    return buttons
+
 # Callback to load fresh data when refresh button is clicked
 @app.callback(
     [Output('data_store', 'data'),
@@ -535,47 +576,6 @@ def refresh_data(n_clicks):
         # Return error message
         error_msg = str(e)
         return [], error_msg, [], [], []
-
-def create_district_buttons(selected_district):
-    active_style = {
-        "width": "50px", "height": "50px", "borderRadius": "50%",
-        "border": "2px solid #7A288A", 
-        "background": "linear-gradient(135deg, #7A288A 0%, #9D4BB5 100%)",
-        "color": "white", "fontWeight": "600", "fontSize": "12px",
-        "margin": "8px 0", "cursor": "pointer",
-        "boxShadow": "0 2px 8px rgba(122, 40, 138, 0.3)"
-    }
-    
-    inactive_style = {
-        "width": "50px", "height": "50px", "borderRadius": "50%",
-        "border": "2px solid #E6E6FA", "background": "white",
-        "color": "#7A288A", "fontWeight": "600", "fontSize": "12px",
-        "margin": "8px 0", "cursor": "pointer",
-        "boxShadow": "0 2px 6px rgba(47, 47, 77, 0.1)",
-        "transition": "all 0.3s ease"
-    }
-    
-    buttons = []
-    
-    # All button
-    buttons.append(html.Button(
-        "All", 
-        id={"type": "district-button", "index": "All"}, 
-        n_clicks=0,
-        style=active_style if selected_district == "All" else inactive_style
-    ))
-    
-    # District buttons
-    for district in available_districts:
-        if district in district_codes:
-            buttons.append(html.Button(
-                district_codes[district], 
-                id={"type": "district-button", "index": district}, 
-                n_clicks=0,
-                style=active_style if selected_district == district else inactive_style
-            ))
-    
-    return buttons
 
 # Callback to update district selection and buttons
 @app.callback(
