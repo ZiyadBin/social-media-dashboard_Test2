@@ -105,7 +105,7 @@ except Exception as e:
 
 app = Dash(__name__)
 
-# KPI card function with matching gradients - Mobile responsive
+# KPI card function with matching gradients
 def kpi_card(title, value, color_scheme):
     gradient_colors = {
         "violet": "linear-gradient(135deg, #7A288A 0%, #9D4BB5 100%)",
@@ -120,42 +120,24 @@ def kpi_card(title, value, color_scheme):
         style={
             "background": gradient_colors[color_scheme],
             "borderRadius": "12px",
-            "padding": "15px",
+            "padding": "20px",
             "textAlign": "center",
             "width": "23%",
-            "minWidth": "120px",
             "margin": "5px",
             "color": text_color,
-            "minHeight": "80px",
+            "minHeight": "100px",
             "display": "flex",
             "flexDirection": "column",
             "justifyContent": "center",
-            "boxShadow": "0 4px 12px rgba(47, 47, 77, 0.1)",
-            "@media (max-width: 768px)": {
-                "width": "48%",
-                "margin": "2px",
-                "padding": "10px",
-                "minHeight": "70px"
-            }
+            "boxShadow": "0 4px 12px rgba(47, 47, 77, 0.1)"
         },
         children=[
-            html.H4(title, style={
-                "fontSize": "13px", 
-                "margin": "0", 
-                "opacity": 0.9, 
-                "fontWeight": "500",
-                "@media (max-width: 768px)": {"fontSize": "11px"}
-            }),
-            html.H2(f"{value:,.0f}", style={
-                "fontSize": "24px", 
-                "margin": "5px 0", 
-                "fontWeight": "600",
-                "@media (max-width: 768px)": {"fontSize": "18px"}
-            }),
+            html.H4(title, style={"fontSize": "13px", "margin": "0", "opacity": 0.9, "fontWeight": "500"}),
+            html.H2(f"{value:,.0f}", style={"fontSize": "24px", "margin": "5px 0", "fontWeight": "600"}),
         ]
     )
 
-# Platform performance card with circular progress - Mobile responsive
+# Platform performance card with circular progress
 def platform_progress_card(platform_name, actual_views, target_views, color):
     if actual_views >= target_views:
         target_views = actual_views + 1000
@@ -179,7 +161,6 @@ def platform_progress_card(platform_name, actual_views, target_views, color):
             "padding": "15px",
             "margin": "8px",
             "width": "48%",
-            "minWidth": "140px",
             "textAlign": "center",
             "minHeight": "180px",
             "display": "flex",
@@ -187,21 +168,14 @@ def platform_progress_card(platform_name, actual_views, target_views, color):
             "justifyContent": "center",
             "alignItems": "center",
             "boxShadow": "0 2px 8px rgba(47, 47, 77, 0.05)",
-            "border": "1px solid #E6E6FA",
-            "@media (max-width: 768px)": {
-                "width": "100%",
-                "margin": "5px 0",
-                "minHeight": "160px",
-                "padding": "10px"
-            }
+            "border": "1px solid #E6E6FA"
         },
         children=[
             html.H3(platform_name, style={
                 "color": color,
                 "margin": "0 0 12px 0",
                 "fontSize": "14px",
-                "fontWeight": "600",
-                "@media (max-width: 768px)": {"fontSize": "12px"}
+                "fontWeight": "600"
             }),
             
             html.Div(
@@ -209,11 +183,7 @@ def platform_progress_card(platform_name, actual_views, target_views, color):
                     "position": "relative",
                     "width": "80px",
                     "height": "80px",
-                    "marginBottom": "12px",
-                    "@media (max-width: 768px)": {
-                        "width": "60px",
-                        "height": "60px"
-                    }
+                    "marginBottom": "12px"
                 },
                 children=[
                     html.Div(
@@ -225,11 +195,7 @@ def platform_progress_card(platform_name, actual_views, target_views, color):
                             "background": f"conic-gradient({progress_color} {percentage * 3.6}deg, #E6E6FA {percentage * 3.6}deg 360deg)",
                             "display": "flex",
                             "justifyContent": "center",
-                            "alignItems": "center",
-                            "@media (max-width: 768px)": {
-                                "width": "60px",
-                                "height": "60px"
-                            }
+                            "alignItems": "center"
                         }
                     ),
                     
@@ -241,13 +207,7 @@ def platform_progress_card(platform_name, actual_views, target_views, color):
                             "background": "white",
                             "borderRadius": "50%",
                             "top": "8px",
-                            "left": "8px",
-                            "@media (max-width: 768px)": {
-                                "width": "48px",
-                                "height": "48px",
-                                "top": "6px",
-                                "left": "6px"
-                            }
+                            "left": "8px"
                         }
                     ),
                     
@@ -264,15 +224,13 @@ def platform_progress_card(platform_name, actual_views, target_views, color):
                                 "fontSize": "16px",
                                 "fontWeight": "700",
                                 "color": "#2F2F4D",
-                                "lineHeight": "1",
-                                "@media (max-width: 768px)": {"fontSize": "14px"}
+                                "lineHeight": "1"
                             }),
                             html.Div("Target", style={
                                 "fontSize": "9px",
                                 "color": "#2F2F4D",
                                 "opacity": 0.6,
-                                "marginTop": "2px",
-                                "@media (max-width: 768px)": {"fontSize": "8px"}
+                                "marginTop": "2px"
                             })
                         ]
                     )
@@ -294,14 +252,12 @@ def platform_progress_card(platform_name, actual_views, target_views, color):
                                 "fontSize": "9px",
                                 "color": "#2F2F4D",
                                 "opacity": 0.7,
-                                "marginBottom": "2px",
-                                "@media (max-width: 768px)": {"fontSize": "8px"}
+                                "marginBottom": "2px"
                             }),
                             html.Div(f"{actual_views:,}", style={
                                 "fontSize": "12px",
                                 "fontWeight": "600",
-                                "color": "#2F2F4D",
-                                "@media (max-width: 768px)": {"fontSize": "10px"}
+                                "color": "#2F2F4D"
                             })
                         ]
                     ),
@@ -312,14 +268,12 @@ def platform_progress_card(platform_name, actual_views, target_views, color):
                                 "fontSize": "9px",
                                 "color": "#2F2F4D",
                                 "opacity": 0.7,
-                                "marginBottom": "2px",
-                                "@media (max-width: 768px)": {"fontSize": "8px"}
+                                "marginBottom": "2px"
                             }),
                             html.Div(f"{target_views:,}", style={
                                 "fontSize": "12px",
                                 "fontWeight": "600",
-                                "color": "#2F2F4D",
-                                "@media (max-width: 768px)": {"fontSize": "10px"}
+                                "color": "#2F2F4D"
                             })
                         ]
                     )
@@ -340,8 +294,7 @@ def platform_progress_card(platform_name, actual_views, target_views, color):
                         style={
                             "fontSize": "9px",
                             "fontWeight": "600",
-                            "color": progress_color,
-                            "@media (max-width: 768px)": {"fontSize": "8px"}
+                            "color": progress_color
                         }
                     )
                 ]
@@ -357,17 +310,14 @@ platform_colors = {
     'WhatsApp': '#25D366'
 }
 
-# Mobile-responsive layout
+# Layout
 app.layout = html.Div(
     style={
         "background": "linear-gradient(135deg, #F5F5FF 0%, #E6E6FA 100%)",
-        "padding": "20px",
+        "padding": "25px",
         "fontFamily": "Inter, sans-serif",
         "minHeight": "100vh",
-        "position": "relative",
-        "@media (max-width: 768px)": {
-            "padding": "10px"
-        }
+        "position": "relative"
     },
     children=[
         # Error message (hidden by default)
@@ -390,7 +340,7 @@ app.layout = html.Div(
                        })
         ], style={"textAlign": "right"}),
         
-        # District buttons - Mobile responsive positioning
+        # District buttons
         html.Div(
             id="district_buttons_container",
             style={
@@ -404,23 +354,12 @@ app.layout = html.Div(
                 "zIndex": 1000,
                 "background": "rgba(255, 255, 255, 0.9)",
                 "backdropFilter": "blur(10px)",
-                "padding": "10px 5px",
-                "borderRadius": "20px",
+                "padding": "15px 10px",
+                "borderRadius": "25px",
                 "border": "1px solid #E6E6FA",
                 "boxShadow": "0 4px 15px rgba(47, 47, 77, 0.1)",
                 "maxHeight": "80vh",
-                "overflowY": "auto",
-                "@media (max-width: 768px)": {
-                    "position": "static",
-                    "transform": "none",
-                    "flexDirection": "row",
-                    "flexWrap": "wrap",
-                    "justifyContent": "center",
-                    "maxHeight": "none",
-                    "marginBottom": "15px",
-                    "padding": "10px",
-                    "width": "100%"
-                }
+                "overflowY": "auto"
             }
         ),
 
@@ -428,13 +367,9 @@ app.layout = html.Div(
                 style={
                     "color": "#2F2F4D", 
                     "textAlign": "center", 
-                    "marginBottom": "20px",
+                    "marginBottom": "25px",
                     "fontWeight": "600",
-                    "fontSize": "28px",
-                    "@media (max-width: 768px)": {
-                        "fontSize": "22px",
-                        "marginBottom": "15px"
-                    }
+                    "fontSize": "28px"
                 }),
 
         # Data status indicator (only shows error)
@@ -444,16 +379,10 @@ app.layout = html.Div(
             "fontSize": "14px",
         }),
 
-        # Filters - Mobile responsive
+        # Filters
         html.Div([
             html.Div([
-                html.Label("Month:", style={
-                    "fontWeight": "500", 
-                    "marginBottom": "5px", 
-                    "color": "#2F2F4D", 
-                    "fontSize": "14px",
-                    "@media (max-width: 768px)": {"fontSize": "12px"}
-                }),
+                html.Label("Month:", style={"fontWeight": "500", "marginBottom": "5px", "color": "#2F2F4D", "fontSize": "14px"}),
                 dcc.Dropdown(
                     id="month_filter", 
                     options=[], 
@@ -465,24 +394,10 @@ app.layout = html.Div(
                         "background": "white"
                     }
                 )
-            ], style={
-                "width": "48%", 
-                "display": "inline-block", 
-                "padding": "5px",
-                "@media (max-width: 768px)": {
-                    "width": "100%",
-                    "marginBottom": "10px"
-                }
-            }),
+            ], style={"width": "48%", "display": "inline-block", "padding": "5px"}),
 
             html.Div([
-                html.Label("Platform:", style={
-                    "fontWeight": "500", 
-                    "marginBottom": "5px", 
-                    "color": "#2F2F4D", 
-                    "fontSize": "14px",
-                    "@media (max-width: 768px)": {"fontSize": "12px"}
-                }),
+                html.Label("Platform:", style={"fontWeight": "500", "marginBottom": "5px", "color": "#2F2F4D", "fontSize": "14px"}),
                 dcc.Dropdown(
                     id="platform_filter", 
                     options=[], 
@@ -494,41 +409,21 @@ app.layout = html.Div(
                         "background": "white"
                     }
                 )
-            ], style={
-                "width": "48%", 
-                "display": "inline-block", 
-                "padding": "5px",
-                "@media (max-width: 768px)": {
-                    "width": "100%"
-                }
-            })
-        ], style={
-            "display": "flex", 
-            "justifyContent": "space-between", 
-            "marginBottom": "20px", 
-            "gap": "10px",
-            "@media (max-width: 768px)": {
-                "flexDirection": "column",
-                "gap": "0"
-            }
-        }),
+            ], style={"width": "48%", "display": "inline-block", "padding": "5px"})
+        ], style={"display": "flex", "justifyContent": "space-between", "marginBottom": "25px", "gap": "10px"}),
 
         # Hidden store for district selection
         dcc.Store(id='district_store', data='All'),
         dcc.Store(id='data_store'),  # Store for current data
 
-        # KPI Section - Mobile responsive
+        # KPI Section
         html.Div(id="kpi_section", style={
             "display": "flex", 
             "justifyContent": "space-between", 
-            "marginBottom": "20px",
-            "flexWrap": "wrap",
-            "@media (max-width: 768px)": {
-                "justifyContent": "space-around"
-            }
+            "marginBottom": "25px"
         }),
 
-        # Graphs and Platform Cards - Mobile responsive
+        # Graphs and Platform Cards
         html.Div([
             # Platform Performance Chart
             html.Div([
@@ -540,12 +435,7 @@ app.layout = html.Div(
                 "background": "white",
                 "borderRadius": "12px",
                 "border": "1px solid #E6E6FA",
-                "boxShadow": "0 2px 8px rgba(47, 47, 77, 0.05)",
-                "@media (max-width: 768px)": {
-                    "width": "100%",
-                    "marginBottom": "15px",
-                    "padding": "10px"
-                }
+                "boxShadow": "0 2px 8px rgba(47, 47, 77, 0.05)"
             }),
             
             # Platform Performance Cards (Circular Progress)
@@ -555,20 +445,12 @@ app.layout = html.Div(
                     "textAlign": "center", 
                     "marginBottom": "20px",
                     "fontWeight": "600",
-                    "fontSize": "18px",
-                    "@media (max-width: 768px)": {
-                        "fontSize": "16px",
-                        "marginBottom": "15px"
-                    }
+                    "fontSize": "18px"
                 }),
                 html.Div(id="platform_cards", style={
                     "display": "flex", 
                     "flexWrap": "wrap", 
-                    "justifyContent": "space-between",
-                    "@media (max-width: 768px)": {
-                        "flexDirection": "column",
-                        "alignItems": "center"
-                    }
+                    "justifyContent": "space-between"
                 })
             ], style={
                 "width": "33%", 
@@ -577,21 +459,9 @@ app.layout = html.Div(
                 "background": "white",
                 "borderRadius": "12px",
                 "border": "1px solid #E6E6FA",
-                "boxShadow": "0 2px 8px rgba(47, 47, 77, 0.05)",
-                "@media (max-width: 768px)": {
-                    "width": "100%",
-                    "padding": "10px"
-                }
+                "boxShadow": "0 2px 8px rgba(47, 47, 77, 0.05)"
             })
-        ], style={
-            "display": "flex", 
-            "justifyContent": "space-between", 
-            "gap": "15px",
-            "@media (max-width: 768px)": {
-                "flexDirection": "column",
-                "gap": "10px"
-            }
-        }),
+        ], style={"display": "flex", "justifyContent": "space-between", "gap": "15px"}),
 
         # Engagement Chart - Only show when single district selected
         html.Div(id="engagement_section", style={
@@ -642,13 +512,7 @@ def update_district_buttons(selected_district, data_dict):
         "background": "linear-gradient(135deg, #7A288A 0%, #9D4BB5 100%)",
         "color": "white", "fontWeight": "600", "fontSize": "12px",
         "margin": "8px 0", "cursor": "pointer",
-        "boxShadow": "0 2px 8px rgba(122, 40, 138, 0.3)",
-        "@media (max-width: 768px)": {
-            "width": "40px", 
-            "height": "40px", 
-            "fontSize": "10px",
-            "margin": "4px"
-        }
+        "boxShadow": "0 2px 8px rgba(122, 40, 138, 0.3)"
     }
     
     inactive_style = {
@@ -657,13 +521,7 @@ def update_district_buttons(selected_district, data_dict):
         "color": "#7A288A", "fontWeight": "600", "fontSize": "12px",
         "margin": "8px 0", "cursor": "pointer",
         "boxShadow": "0 2px 6px rgba(47, 47, 77, 0.1)",
-        "transition": "all 0.3s ease",
-        "@media (max-width: 768px)": {
-            "width": "40px", 
-            "height": "40px", 
-            "fontSize": "10px",
-            "margin": "4px"
-        }
+        "transition": "all 0.3s ease"
     }
     
     buttons = []
@@ -708,11 +566,11 @@ def update_district_buttons(selected_district, data_dict):
     
     return buttons
 
-# Fixed callback to update district selection
+# SIMPLE FIX: Proper callback for district selection
 @app.callback(
     Output('district_store', 'data'),
     [Input('btn_All', 'n_clicks')] + 
-    [Input('district_buttons_container', 'children')],  # Listen to button container changes
+    [Input('district_buttons_container', 'children')],
     prevent_initial_call=True
 )
 def update_district_selection(all_clicks, buttons_children):
@@ -847,11 +705,7 @@ def update_dashboard(selected_district, selected_month, selected_platform, data_
                         "display": "flex",
                         "justifyContent": "space-between",
                         "marginBottom": "10px",
-                        "width": "100%",
-                        "@media (max-width: 768px)": {
-                            "flexDirection": "column",
-                            "alignItems": "center"
-                        }
+                        "width": "100%"
                     },
                     children=row_cards
                 )
@@ -894,10 +748,7 @@ def update_dashboard(selected_district, selected_month, selected_platform, data_
             "background": "white",
             "borderRadius": "12px",
             "border": "1px solid #E6E6FA",
-            "boxShadow": "0 2px 8px rgba(47, 47, 77, 0.05)",
-            "@media (max-width: 768px)": {
-                "padding": "10px"
-            }
+            "boxShadow": "0 2px 8px rgba(47, 47, 77, 0.05)"
         })
 
     return platform_chart, platform_cards_content, kpis, engagement_section
