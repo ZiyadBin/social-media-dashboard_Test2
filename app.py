@@ -4,7 +4,7 @@ from dash import Dash, html, dcc, Input, Output, callback_context
 import plotly.express as px
 import numpy as np
 
-# --- CONFIG: Google Sheet link (make sure it's published to web)
+# --- CONFIG: Google Sheet link
 GOOGLE_SHEET_URL = "https://docs.google.com/spreadsheets/d/1QyeUhUye7O9p29GT3arc70hmMT42XWOnpXeGrtLtC5M/edit?usp=sharing"
 
 def extract_sheet_id(url: str) -> str:
@@ -17,10 +17,8 @@ def extract_sheet_id(url: str) -> str:
 def read_google_sheet_as_df(sheet_url: str) -> pd.DataFrame:
     """
     Read a Google Sheet tab as a pandas DataFrame using the CSV export link.
-    The sheet must be published to web.
     """
     sheet_id = extract_sheet_id(sheet_url)
-    # Use the correct export format for published sheets
     export_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
     df = pd.read_csv(export_url)
     return df
@@ -28,39 +26,79 @@ def read_google_sheet_as_df(sheet_url: str) -> pd.DataFrame:
 def transform_wide_to_long(df_wide: pd.DataFrame) -> pd.DataFrame:
     """
     Transform the wide Google-Form style sheet into the long format expected by the dashboard.
-    Based on your actual column names.
     """
     platforms = ['Facebook', 'Instagram', 'YouTube', 'WhatsApp']
     rows = []
 
-    # Ensure core columns exist with proper fallbacks
-    required_columns = ["Timestamp", "District", "Month"]
-    for col in required_columns:
-        if col not in df_wide.columns:
-            # Try to find similar columns (case-insensitive)
-            matching_cols = [c for c in df_wide.columns if col.lower() in c.lower()]
-            if matching_cols:
-                df_wide[col] = df_wide[matching_cols[0]]
-            else:
-                df_wide[col] = pd.NA
+    print("Available columns in Google Sheet:", list(df_wide.columns))
+    
+    # Debug: Print first few rows to see actual data
+    print("First few rows of raw data:")
+    print(df_wide.head())
+
+    # Map column names - handle different naming patterns
+    column_mapping = {
+        'Timestamp': ['Timestamp', 'timestamp', 'Time'],
+        'District': ['District', 'district', 'Districts'],
+        'Month': ['Month', 'month', 'months']
+    }
+    
+    # Find actual column names
+    actual_columns = {}
+    for standard_name, possible_names in column_mapping.items():
+        for possible in possible_names:
+            if possible in df_wide.columns:
+                actual_columns[standard_name] = possible
+                break
+        if standard_name not in actual_columns:
+            print(f"Warning: Column '{standard_name}' not found. Using default.")
+            df_wide[standard_name] = pd.NA
 
     for _, r in df_wide.iterrows():
-        base_timestamp = r.get("Timestamp")
-        base_district = r.get("District")
-        base_month = r.get("Month")
+        # Use actual column names from mapping
+        base_timestamp = r.get(actual_columns.get('Timestamp', 'Timestamp'))
+        base_district = r.get(actual_columns.get('District', 'District'))
+        base_month = r.get(actual_columns.get('Month', 'Month'))
+
+        print(f"Processing row - District: {base_district}, Month: {base_month}")
 
         for p in platforms:
-            # Build wide column names exactly as they appear in your sheet
-            col_posts = f"{p} - Total Posts"
-            col_inter = f"{p} - Total Interactions"
-            col_views = f"{p} - Total Views"
-            col_followers = f"{p} - Followers Gained"
+            # Build wide column names - handle different formats
+            possible_post_names = [f"{p} - Total Posts", f"{p} - Total posts", f"{p} - Posts"]
+            possible_inter_names = [f"{p} - Total Interactions", f"{p} - Total interactions", f"{p} - Interactions"]
+            possible_views_names = [f"{p} - Total Views", f"{p} - Total views", f"{p} - Views"]
+            possible_followers_names = [f"{p} - Followers Gained", f"{p} - Followers gained", f"{p} - Followers"]
 
-            # Safely fetch values (if column missing, treat as 0)
-            total_posts = pd.to_numeric(r.get(col_posts, 0), errors="coerce")
-            total_interactions = pd.to_numeric(r.get(col_inter, 0), errors="coerce")
-            total_views = pd.to_numeric(r.get(col_views, 0), errors="coerce")
-            followers_gained = pd.to_numeric(r.get(col_followers, 0), errors="coerce")
+            # Find actual column names
+            col_posts = None
+            for name in possible_post_names:
+                if name in df_wide.columns:
+                    col_posts = name
+                    break
+            
+            col_inter = None
+            for name in possible_inter_names:
+                if name in df_wide.columns:
+                    col_inter = name
+                    break
+            
+            col_views = None
+            for name in possible_views_names:
+                if name in df_wide.columns:
+                    col_views = name
+                    break
+            
+            col_followers = None
+            for name in possible_followers_names:
+                if name in df_wide.columns:
+                    col_followers = name
+                    break
+
+            # Get values with proper column names
+            total_posts = pd.to_numeric(r.get(col_posts, 0), errors="coerce") if col_posts else 0
+            total_interactions = pd.to_numeric(r.get(col_inter, 0), errors="coerce") if col_inter else 0
+            total_views = pd.to_numeric(r.get(col_views, 0), errors="coerce") if col_views else 0
+            followers_gained = pd.to_numeric(r.get(col_followers, 0), errors="coerce") if col_followers else 0
 
             # Fill NaN with 0 for numeric fields
             total_posts = int(0 if pd.isna(total_posts) else total_posts)
@@ -74,17 +112,19 @@ def transform_wide_to_long(df_wide: pd.DataFrame) -> pd.DataFrame:
             else:
                 engagement_rate = 0.0
 
-            rows.append({
-                "Timestamp": base_timestamp,
-                "District": base_district,
-                "Month": base_month,
-                "Platform": p,
-                "Total_Posts": total_posts,
-                "Total_Interactions": total_interactions,
-                "Total_Views": total_views,
-                "Followers_Gained": followers_gained,
-                "Engagement_Rate": engagement_rate
-            })
+            # Only add row if there's actual data
+            if total_posts > 0 or total_interactions > 0 or total_views > 0:
+                rows.append({
+                    "Timestamp": base_timestamp,
+                    "District": base_district,
+                    "Month": base_month,
+                    "Platform": p,
+                    "Total_Posts": total_posts,
+                    "Total_Interactions": total_interactions,
+                    "Total_Views": total_views,
+                    "Followers_Gained": followers_gained,
+                    "Engagement_Rate": engagement_rate
+                })
 
     df_long = pd.DataFrame(rows)
     
@@ -98,12 +138,23 @@ def transform_wide_to_long(df_wide: pd.DataFrame) -> pd.DataFrame:
     df_long["District"] = df_long["District"].fillna("Unknown")
     df_long["Month"] = df_long["Month"].fillna("Unknown")
     
+    print(f"Transformed data shape: {df_long.shape}")
+    print(f"Districts in transformed data: {df_long['District'].unique()}")
+    print(f"Sample of transformed data:")
+    print(df_long.head())
+    
     return df_long
 
 def create_fallback_data():
     """Create dummy data as fallback when Google Sheets fails"""
-    districts = ['Kozhikode', 'Malappuram', 'Kannur', 'Thrissur', 'Palakkad']
-    months = ['January', 'February', 'March']
+    # Your actual districts
+    districts = [
+        'Kasaragod', 'Kannur', 'Kozhikode North', 'Kozhikode South', 'Wayanad',
+        'Malappuram West', 'Malappuram East', 'Nilgris', 'Thrissur', 'Palakkad',
+        'Ernakulam', 'Idukki HR', 'Idukki LR', 'Kottayam', 'Alappuzha',
+        'Pathanamthitta', 'Kollam', 'Thiruvananthapuram', 'State Entry'
+    ]
+    months = ['October', 'November', 'December']
     platforms = ['Facebook', 'Instagram', 'YouTube', 'WhatsApp']
     
     rows = []
@@ -148,44 +199,54 @@ print(f"Final dataset shape: {df.shape}")
 print(f"Available districts: {df['District'].unique()}")
 print(f"Available months: {df['Month'].unique()}")
 
-# Create district codes dynamically from available data
-available_districts = df['District'].unique()
+# Your actual districts list
+ACTUAL_DISTRICTS = [
+    'Kasaragod', 'Kannur', 'Kozhikode North', 'Kozhikode South', 'Wayanad',
+    'Malappuram West', 'Malappuram East', 'Nilgris', 'Thrissur', 'Palakkad',
+    'Ernakulam', 'Idukki HR', 'Idukki LR', 'Kottayam', 'Alappuzha',
+    'Pathanamthitta', 'Kollam', 'Thiruvananthapuram', 'State Entry'
+]
+
+# Create district codes dynamically
 district_codes = {}
-for district in available_districts:
-    if district == "Unknown":
-        district_codes[district] = "UN"
+for district in ACTUAL_DISTRICTS:
+    if district == "State Entry":
+        district_codes[district] = "ST"
+    elif len(district) <= 3:
+        district_codes[district] = district.upper()
     else:
-        # Take first 2-3 letters for code
-        if len(district) <= 3:
-            district_codes[district] = district.upper()
+        # Create codes like KSG for Kasaragod, KNR for Kannur, etc.
+        words = district.split()
+        if len(words) > 1:
+            code = ''.join([word[0] for word in words])
+            district_codes[district] = code.upper()
         else:
             district_codes[district] = district[:3].upper()
 
-# District coordinates for Kerala map (extended for more districts)
+# District coordinates for Kerala map
 district_coords = {
-    "Kozhikode": {"lat": 11.25, "lon": 75.77},
-    "Malappuram": {"lat": 11.07, "lon": 76.07},
-    "Kannur": {"lat": 11.87, "lon": 75.37},
-    "Thrissur": {"lat": 10.52, "lon": 76.21},
-    "Palakkad": {"lat": 10.77, "lon": 76.65},
-    "Thiruvananthapuram": {"lat": 8.52, "lon": 76.93},
-    "Kollam": {"lat": 8.88, "lon": 76.60},
-    "Pathanamthitta": {"lat": 9.27, "lon": 76.78},
-    "Alappuzha": {"lat": 9.49, "lon": 76.33},
-    "Kottayam": {"lat": 9.59, "lon": 76.52},
-    "Idukki": {"lat": 9.85, "lon": 76.94},
-    "Ernakulam": {"lat": 10.00, "lon": 76.33},
-    "Wayanad": {"lat": 11.68, "lon": 76.13},
-    "Kasaragod": {"lat": 12.50, "lon": 75.00}
+    'Kasaragod': {"lat": 12.50, "lon": 75.00},
+    'Kannur': {"lat": 11.87, "lon": 75.37},
+    'Kozhikode North': {"lat": 11.45, "lon": 75.70},
+    'Kozhikode South': {"lat": 11.25, "lon": 75.77},
+    'Wayanad': {"lat": 11.68, "lon": 76.13},
+    'Malappuram West': {"lat": 11.07, "lon": 76.00},
+    'Malappuram East': {"lat": 11.07, "lon": 76.20},
+    'Nilgris': {"lat": 11.40, "lon": 76.70},
+    'Thrissur': {"lat": 10.52, "lon": 76.21},
+    'Palakkad': {"lat": 10.77, "lon": 76.65},
+    'Ernakulam': {"lat": 10.00, "lon": 76.33},
+    'Idukki HR': {"lat": 9.85, "lon": 76.94},
+    'Idukki LR': {"lat": 9.75, "lon": 76.85},
+    'Kottayam': {"lat": 9.59, "lon": 76.52},
+    'Alappuzha': {"lat": 9.49, "lon": 76.33},
+    'Pathanamthitta': {"lat": 9.27, "lon": 76.78},
+    'Kollam': {"lat": 8.88, "lon": 76.60},
+    'Thiruvananthapuram': {"lat": 8.52, "lon": 76.93},
+    'State Entry': {"lat": 10.85, "lon": 76.27}  # Center of Kerala
 }
 
-# Add default coordinates for any missing districts
-for district in available_districts:
-    if district not in district_coords and district != "Unknown":
-        # Default to center of Kerala
-        district_coords[district] = {"lat": 10.85, "lon": 76.27}
-
-# Create dropdown options for month and platform (built from transformed df)
+# Create dropdown options for month and platform
 month_options = [{"label": str(m), "value": str(m)} for m in df["Month"].fillna("Unknown").unique()]
 month_options.insert(0, {"label": "All Months", "value": "All"})
 
@@ -194,7 +255,9 @@ platform_options.insert(0, {"label": "All Platforms", "value": "All"})
 
 app = Dash(__name__)
 
-# KPI card function with matching gradients
+# ... [KEEP ALL THE SAME FUNCTIONS: kpi_card, platform_progress_card, platform_colors, layout] ...
+
+# KPI card function (same as before)
 def kpi_card(title, value, color_scheme):
     gradient_colors = {
         "violet": "linear-gradient(135deg, #7A288A 0%, #9D4BB5 100%)",
@@ -226,24 +289,21 @@ def kpi_card(title, value, color_scheme):
         ]
     )
 
-# Platform performance card with circular progress
+# Platform performance card (same as before)
 def platform_progress_card(platform_name, actual_views, target_views, color):
-    # Ensure target is always greater than achieved
     if actual_views >= target_views:
-        target_views = actual_views + 1000  # Add 1k to achieved views
+        target_views = actual_views + 1000
     
-    # Calculate percentage
     percentage = min(100, (actual_views / target_views) * 100) if target_views > 0 else 0
     
-    # Determine color based on percentage
     if percentage >= 80:
-        progress_color = "#43e97b"  # Green
+        progress_color = "#43e97b"
         performance_text = "Excellent"
     elif percentage >= 60:
-        progress_color = "#f5576c"  # Orange
+        progress_color = "#f5576c"
         performance_text = "Good"
     else:
-        progress_color = "#ff4757"  # Red
+        progress_color = "#ff4757"
         performance_text = "Needs Improvement"
     
     return html.Div(
@@ -263,7 +323,6 @@ def platform_progress_card(platform_name, actual_views, target_views, color):
             "border": "1px solid #E6E6FA"
         },
         children=[
-            # Platform name with brand color
             html.H3(platform_name, style={
                 "color": color,
                 "margin": "0 0 12px 0",
@@ -271,7 +330,6 @@ def platform_progress_card(platform_name, actual_views, target_views, color):
                 "fontWeight": "600"
             }),
             
-            # Circular progress container
             html.Div(
                 style={
                     "position": "relative",
@@ -280,7 +338,6 @@ def platform_progress_card(platform_name, actual_views, target_views, color):
                     "marginBottom": "12px"
                 },
                 children=[
-                    # Single progress circle
                     html.Div(
                         style={
                             "position": "absolute",
@@ -294,7 +351,6 @@ def platform_progress_card(platform_name, actual_views, target_views, color):
                         }
                     ),
                     
-                    # Inner white circle to create ring effect
                     html.Div(
                         style={
                             "position": "absolute",
@@ -307,7 +363,6 @@ def platform_progress_card(platform_name, actual_views, target_views, color):
                         }
                     ),
                     
-                    # Percentage text in center
                     html.Div(
                         style={
                             "position": "absolute",
@@ -334,7 +389,6 @@ def platform_progress_card(platform_name, actual_views, target_views, color):
                 ]
             ),
             
-            # Views information
             html.Div(
                 style={
                     "display": "flex",
@@ -378,7 +432,6 @@ def platform_progress_card(platform_name, actual_views, target_views, color):
                 ]
             ),
             
-            # Performance indicator
             html.Div(
                 style={
                     "marginTop": "8px",
@@ -401,15 +454,15 @@ def platform_progress_card(platform_name, actual_views, target_views, color):
         ]
     )
 
-# Platform colors with actual brand colors
+# Platform colors
 platform_colors = {
-    'Facebook': '#1877F2',      # Facebook blue
-    'Instagram': '#E4405F',     # Instagram pink
-    'YouTube': '#FF0000',       # YouTube red
-    'WhatsApp': '#25D366'       # WhatsApp green
+    'Facebook': '#1877F2',
+    'Instagram': '#E4405F',
+    'YouTube': '#FF0000',
+    'WhatsApp': '#25D366'
 }
 
-# Layout
+# Layout (same as before)
 app.layout = html.Div(
     style={
         "background": "linear-gradient(135deg, #F5F5FF 0%, #E6E6FA 100%)",
@@ -419,7 +472,6 @@ app.layout = html.Div(
         "position": "relative"
     },
     children=[
-        # District buttons on right side - DYNAMICALLY GENERATED
         html.Div(
             id="district_buttons_container",
             style={
@@ -451,7 +503,6 @@ app.layout = html.Div(
                     "fontSize": "28px"
                 }),
 
-        # Filters (only month and platform now)
         html.Div([
             html.Div([
                 html.Label("Month:", style={"fontWeight": "500", "marginBottom": "5px", "color": "#2F2F4D", "fontSize": "14px"}),
@@ -484,19 +535,15 @@ app.layout = html.Div(
             ], style={"width": "48%", "display": "inline-block", "padding": "5px"})
         ], style={"display": "flex", "justifyContent": "space-between", "marginBottom": "25px", "gap": "10px"}),
 
-        # Hidden store for district selection
         dcc.Store(id='district_store', data='All'),
 
-        # KPI Section
         html.Div(id="kpi_section", style={
             "display": "flex", 
             "justifyContent": "space-between", 
             "marginBottom": "25px"
         }),
 
-        # Graphs and Platform Cards
         html.Div([
-            # Platform Performance Chart
             html.Div([
                 dcc.Graph(id="platform_chart", style={"height": "350px"})
             ], style={
@@ -509,7 +556,6 @@ app.layout = html.Div(
                 "boxShadow": "0 2px 8px rgba(47, 47, 77, 0.05)"
             }),
             
-            # Platform Performance Cards (Circular Progress)
             html.Div([
                 html.H3("Platform Performance", style={
                     "color": "#2F2F4D", 
@@ -534,10 +580,11 @@ app.layout = html.Div(
             })
         ], style={"display": "flex", "justifyContent": "space-between", "gap": "15px"}),
 
-        # Map or Engagement Chart - Conditionally displayed
         html.Div(id="map_engagement_section", style={"marginTop": "20px"})
     ]
 )
+
+# ... [KEEP ALL THE SAME CALLBACKS] ...
 
 # Callback to generate district buttons dynamically
 @app.callback(
@@ -545,7 +592,6 @@ app.layout = html.Div(
     Input('district_store', 'data')
 )
 def update_district_buttons(selected_district):
-    # Define active and inactive styles
     active_style = {
         "width": "50px", "height": "50px", "borderRadius": "50%",
         "border": "2px solid #7A288A", 
@@ -574,11 +620,12 @@ def update_district_buttons(selected_district):
         style=active_style if selected_district == "All" else inactive_style
     ))
     
-    # District buttons
-    for district, code in district_codes.items():
-        if district != "Unknown":  # Skip unknown districts
+    # District buttons - only show districts that have data
+    available_districts = df['District'].unique()
+    for district in ACTUAL_DISTRICTS:
+        if district in available_districts:
             buttons.append(html.Button(
-                code, 
+                district_codes[district], 
                 id=f"btn_{district}", 
                 n_clicks=0,
                 style=active_style if selected_district == district else inactive_style
@@ -590,7 +637,7 @@ def update_district_buttons(selected_district):
 @app.callback(
     Output('district_store', 'data'),
     [Input(f"btn_All", 'n_clicks')] + 
-    [Input(f"btn_{district}", 'n_clicks') for district in district_codes if district != "Unknown"],
+    [Input(f"btn_{district}", 'n_clicks') for district in ACTUAL_DISTRICTS],
     prevent_initial_call=True
 )
 def update_district_selection(all_clicks, *district_clicks):
@@ -624,11 +671,17 @@ def update_dashboard(selected_district, selected_month, selected_platform):
     if selected_platform != "All":
         filtered_df = filtered_df[filtered_df["Platform"] == selected_platform]
 
+    print(f"Filtered data shape: {filtered_df.shape}")
+    print(f"Filtered data sample:")
+    print(filtered_df.head())
+
     # KPI Calculations
     total_posts = filtered_df["Total_Posts"].sum()
     total_interactions = filtered_df["Total_Interactions"].sum()
     total_views = filtered_df["Total_Views"].sum()
     followers_gained = filtered_df["Followers_Gained"].sum()
+
+    print(f"KPIs - Posts: {total_posts}, Interactions: {total_interactions}, Views: {total_views}, Followers: {followers_gained}")
 
     # KPI Cards
     kpis = [
@@ -658,7 +711,6 @@ def update_dashboard(selected_district, selected_month, selected_platform):
             showlegend=True
         )
     else:
-        # Empty chart if no data
         platform_chart = px.bar(title="No data available for selected filters")
         platform_chart.update_layout(
             plot_bgcolor="white",
@@ -668,10 +720,9 @@ def update_dashboard(selected_district, selected_month, selected_platform):
             title_x=0.5
         )
 
-    # Platform Performance Cards (Circular Progress)
+    # Platform Performance Cards
     platform_cards = []
     if not filtered_df.empty:
-        # Define target views per post
         TARGET_VIEWS_PER_POST = 2500
         
         platforms_to_show = ['Facebook', 'Instagram', 'YouTube', 'WhatsApp']
@@ -691,15 +742,13 @@ def update_dashboard(selected_district, selected_month, selected_platform):
                     color=platform_colors[platform]
                 ))
             else:
-                # If no data for platform, show zero progress
                 platform_cards.append(platform_progress_card(
                     platform_name=platform,
                     actual_views=0,
-                    target_views=1000,  # Minimum target
+                    target_views=1000,
                     color=platform_colors[platform]
                 ))
         
-        # Arrange cards in rows of 2
         rows = []
         for i in range(0, len(platform_cards), 2):
             row_cards = platform_cards[i:i+2]
@@ -719,13 +768,11 @@ def update_dashboard(selected_district, selected_month, selected_platform):
     else:
         platform_cards_content = html.Div("No data available", style={"textAlign": "center", "color": "#999"})
 
-    # MAP or ENGAGEMENT CHART - Conditionally displayed
+    # MAP or ENGAGEMENT CHART
     map_engagement_section = []
     
     if selected_district == "All":
-        # SHOW MAP when "All" districts selected
         if not filtered_df.empty:
-            # Prepare data for map
             map_data = []
             for district in district_coords.keys():
                 if district in filtered_df['District'].values:
@@ -745,7 +792,6 @@ def update_dashboard(selected_district, selected_month, selected_platform):
             if map_data:
                 map_df = pd.DataFrame(map_data)
                 
-                # Create bubble map
                 platform_map = px.scatter_mapbox(
                     map_df,
                     lat="lat",
@@ -792,7 +838,6 @@ def update_dashboard(selected_district, selected_month, selected_platform):
                 })
     
     else:
-        # SHOW ENGAGEMENT CHART when single district selected
         if not filtered_df.empty:
             engagement_chart = px.scatter(
                 filtered_df,
@@ -830,6 +875,5 @@ def update_dashboard(selected_district, selected_month, selected_platform):
 
     return platform_chart, platform_cards_content, kpis, map_engagement_section
 
-# Railway-compatible setup
 if __name__ == "__main__":
     app.run(debug=False, host='0.0.0.0', port=8080)
