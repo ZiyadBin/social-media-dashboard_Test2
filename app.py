@@ -2,11 +2,10 @@ import re
 import pandas as pd
 from dash import Dash, html, dcc, Input, Output, callback_context
 import plotly.express as px
+import numpy as np
 
-# --- CONFIG: Google Sheet link (the one you provided)
+# --- CONFIG: Google Sheet link (make sure it's published to web)
 GOOGLE_SHEET_URL = "https://docs.google.com/spreadsheets/d/1QyeUhUye7O9p29GT3arc70hmMT42XWOnpXeGrtLtC5M/edit?usp=sharing"
-# If your sheet's tab (gid) is not 0, replace the gid below with the correct number:
-DEFAULT_SHEET_GID = "0"
 
 def extract_sheet_id(url: str) -> str:
     """Extract spreadsheet id from a standard Google Sheets URL."""
@@ -15,29 +14,35 @@ def extract_sheet_id(url: str) -> str:
         raise ValueError("Could not extract sheet id from URL.")
     return m.group(1)
 
-def read_google_sheet_as_df(sheet_url: str, gid: str = DEFAULT_SHEET_GID) -> pd.DataFrame:
+def read_google_sheet_as_df(sheet_url: str) -> pd.DataFrame:
     """
     Read a Google Sheet tab as a pandas DataFrame using the CSV export link.
-    The sheet must be viewable publicly or shared appropriately.
+    The sheet must be published to web.
     """
     sheet_id = extract_sheet_id(sheet_url)
-    export_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
+    # Use the correct export format for published sheets
+    export_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
     df = pd.read_csv(export_url)
     return df
 
 def transform_wide_to_long(df_wide: pd.DataFrame) -> pd.DataFrame:
     """
-    Transform the wide Google-Form style sheet into the long format expected by the dashboard:
-    Timestamp, District, Month, Platform, Total_Posts, Total_Interactions, Total_Views, Followers_Gained, Engagement_Rate
+    Transform the wide Google-Form style sheet into the long format expected by the dashboard.
+    Based on your actual column names.
     """
     platforms = ['Facebook', 'Instagram', 'YouTube', 'WhatsApp']
     rows = []
 
-    # Ensure core columns exist
-    for col in ["Timestamp", "District", "Month"]:
+    # Ensure core columns exist with proper fallbacks
+    required_columns = ["Timestamp", "District", "Month"]
+    for col in required_columns:
         if col not in df_wide.columns:
-            # If missing, add with default empty values to avoid crashes
-            df_wide[col] = pd.NA
+            # Try to find similar columns (case-insensitive)
+            matching_cols = [c for c in df_wide.columns if col.lower() in c.lower()]
+            if matching_cols:
+                df_wide[col] = df_wide[matching_cols[0]]
+            else:
+                df_wide[col] = pd.NA
 
     for _, r in df_wide.iterrows():
         base_timestamp = r.get("Timestamp")
@@ -45,7 +50,7 @@ def transform_wide_to_long(df_wide: pd.DataFrame) -> pd.DataFrame:
         base_month = r.get("Month")
 
         for p in platforms:
-            # Build wide column names
+            # Build wide column names exactly as they appear in your sheet
             col_posts = f"{p} - Total Posts"
             col_inter = f"{p} - Total Interactions"
             col_views = f"{p} - Total Views"
@@ -63,7 +68,7 @@ def transform_wide_to_long(df_wide: pd.DataFrame) -> pd.DataFrame:
             total_views = int(0 if pd.isna(total_views) else total_views)
             followers_gained = int(0 if pd.isna(followers_gained) else followers_gained)
 
-            # Compute engagement rate safely
+            # Compute engagement rate safely (Total_Interactions / Total_Views) * 100
             if total_views > 0:
                 engagement_rate = (total_interactions / total_views) * 100
             else:
@@ -82,7 +87,8 @@ def transform_wide_to_long(df_wide: pd.DataFrame) -> pd.DataFrame:
             })
 
     df_long = pd.DataFrame(rows)
-    # Optional: convert Timestamp to datetime if possible
+    
+    # Convert Timestamp to datetime if possible
     try:
         df_long["Timestamp"] = pd.to_datetime(df_long["Timestamp"], errors="coerce")
     except Exception:
@@ -91,34 +97,96 @@ def transform_wide_to_long(df_wide: pd.DataFrame) -> pd.DataFrame:
     # Fill missing District/Month with placeholder to avoid filter issues
     df_long["District"] = df_long["District"].fillna("Unknown")
     df_long["Month"] = df_long["Month"].fillna("Unknown")
-
+    
     return df_long
+
+def create_fallback_data():
+    """Create dummy data as fallback when Google Sheets fails"""
+    districts = ['Kozhikode', 'Malappuram', 'Kannur', 'Thrissur', 'Palakkad']
+    months = ['January', 'February', 'March']
+    platforms = ['Facebook', 'Instagram', 'YouTube', 'WhatsApp']
+    
+    rows = []
+    for district in districts:
+        for month in months:
+            for platform in platforms:
+                total_posts = np.random.randint(5, 20)
+                total_views = np.random.randint(1000, 10000)
+                total_interactions = np.random.randint(100, 2000)
+                followers_gained = np.random.randint(10, 100)
+                engagement_rate = (total_interactions / total_views) * 100 if total_views > 0 else 0
+                
+                rows.append({
+                    "District": district,
+                    "Month": month,
+                    "Platform": platform,
+                    "Total_Posts": total_posts,
+                    "Total_Interactions": total_interactions,
+                    "Total_Views": total_views,
+                    "Followers_Gained": followers_gained,
+                    "Engagement_Rate": engagement_rate
+                })
+    
+    return pd.DataFrame(rows)
 
 # --- Load & transform data from Google Sheet
 try:
-    df_wide = read_google_sheet_as_df(GOOGLE_SHEET_URL, gid=DEFAULT_SHEET_GID)
+    print("Attempting to load data from Google Sheets...")
+    df_wide = read_google_sheet_as_df(GOOGLE_SHEET_URL)
+    print("Google Sheets data loaded successfully!")
+    print(f"Columns found: {list(df_wide.columns)}")
+    print(f"Number of rows: {len(df_wide)}")
+    
     df = transform_wide_to_long(df_wide)
+    print("Data transformed to long format successfully!")
+    
 except Exception as e:
-    # If reading the sheet fails (network / permission), fallback to local Excel (your dummy)
-    print(f"Warning: could not load Google Sheet ({e}). Falling back to local Excel.")
-    df = pd.read_excel("districts_social_dummy_data.xlsx")
+    print(f"Warning: could not load Google Sheet ({e}). Creating fallback data.")
+    df = create_fallback_data()
 
-# Create district codes (first 2-3 letters)
-# Instead of hardcoded district_codes and district_coords:
-district_codes = {district: generate_code(district) for district in df["District"].unique()}
-district_coords = {district: get_coordinates(district) for district in df["District"].unique()}
+print(f"Final dataset shape: {df.shape}")
+print(f"Available districts: {df['District'].unique()}")
+print(f"Available months: {df['Month'].unique()}")
 
-# District coordinates for Kerala map
+# Create district codes dynamically from available data
+available_districts = df['District'].unique()
+district_codes = {}
+for district in available_districts:
+    if district == "Unknown":
+        district_codes[district] = "UN"
+    else:
+        # Take first 2-3 letters for code
+        if len(district) <= 3:
+            district_codes[district] = district.upper()
+        else:
+            district_codes[district] = district[:3].upper()
+
+# District coordinates for Kerala map (extended for more districts)
 district_coords = {
     "Kozhikode": {"lat": 11.25, "lon": 75.77},
     "Malappuram": {"lat": 11.07, "lon": 76.07},
     "Kannur": {"lat": 11.87, "lon": 75.37},
     "Thrissur": {"lat": 10.52, "lon": 76.21},
-    "Palakkad": {"lat": 10.77, "lon": 76.65}
+    "Palakkad": {"lat": 10.77, "lon": 76.65},
+    "Thiruvananthapuram": {"lat": 8.52, "lon": 76.93},
+    "Kollam": {"lat": 8.88, "lon": 76.60},
+    "Pathanamthitta": {"lat": 9.27, "lon": 76.78},
+    "Alappuzha": {"lat": 9.49, "lon": 76.33},
+    "Kottayam": {"lat": 9.59, "lon": 76.52},
+    "Idukki": {"lat": 9.85, "lon": 76.94},
+    "Ernakulam": {"lat": 10.00, "lon": 76.33},
+    "Wayanad": {"lat": 11.68, "lon": 76.13},
+    "Kasaragod": {"lat": 12.50, "lon": 75.00}
 }
 
+# Add default coordinates for any missing districts
+for district in available_districts:
+    if district not in district_coords and district != "Unknown":
+        # Default to center of Kerala
+        district_coords[district] = {"lat": 10.85, "lon": 76.27}
+
 # Create dropdown options for month and platform (built from transformed df)
-month_options = [{"label": m, "value": m} for m in df["Month"].fillna("Unknown").unique()]
+month_options = [{"label": str(m), "value": str(m)} for m in df["Month"].fillna("Unknown").unique()]
 month_options.insert(0, {"label": "All Months", "value": "All"})
 
 platform_options = [{"label": p, "value": p} for p in df["Platform"].unique()]
@@ -351,33 +419,9 @@ app.layout = html.Div(
         "position": "relative"
     },
     children=[
-        # District buttons on right side
+        # District buttons on right side - DYNAMICALLY GENERATED
         html.Div(
-            [
-                # All button
-                html.Button("All", id="btn_All", n_clicks=0, style={
-                    "width": "50px", "height": "50px", "borderRadius": "50%",
-                    "border": "2px solid #7A288A", 
-                    "background": "linear-gradient(135deg, #7A288A 0%, #9D4BB5 100%)",
-                    "color": "white", "fontWeight": "600", "fontSize": "12px",
-                    "margin": "8px 0", "cursor": "pointer",
-                    "boxShadow": "0 2px 8px rgba(122, 40, 138, 0.3)"
-                }),
-                # District buttons
-                *[html.Button(
-                    code, 
-                    id=f"btn_{district}", 
-                    n_clicks=0, 
-                    style={
-                        "width": "50px", "height": "50px", "borderRadius": "50%",
-                        "border": "2px solid #E6E6FA", "background": "white",
-                        "color": "#7A288A", "fontWeight": "600", "fontSize": "12px",
-                        "margin": "8px 0", "cursor": "pointer",
-                        "boxShadow": "0 2px 6px rgba(47, 47, 77, 0.1)",
-                        "transition": "all 0.3s ease"
-                    }
-                ) for district, code in district_codes.items()]
-            ],
+            id="district_buttons_container",
             style={
                 "position": "fixed",
                 "right": "20px",
@@ -392,7 +436,9 @@ app.layout = html.Div(
                 "padding": "15px 10px",
                 "borderRadius": "25px",
                 "border": "1px solid #E6E6FA",
-                "boxShadow": "0 4px 15px rgba(47, 47, 77, 0.1)"
+                "boxShadow": "0 4px 15px rgba(47, 47, 77, 0.1)",
+                "maxHeight": "80vh",
+                "overflowY": "auto"
             }
         ),
 
@@ -493,31 +539,12 @@ app.layout = html.Div(
     ]
 )
 
-# Callback to update district selection and button styles
+# Callback to generate district buttons dynamically
 @app.callback(
-    [Output('district_store', 'data'),
-     Output('btn_All', 'style'),
-     Output('btn_Kozhikode', 'style'),
-     Output('btn_Malappuram', 'style'),
-     Output('btn_Kannur', 'style'),
-     Output('btn_Thrissur', 'style'),
-     Output('btn_Palakkad', 'style')],
-    [Input("btn_All", 'n_clicks'),
-     Input("btn_Kozhikode", 'n_clicks'),
-     Input("btn_Malappuram", 'n_clicks'),
-     Input("btn_Kannur", 'n_clicks'),
-     Input("btn_Thrissur", 'n_clicks'),
-     Input("btn_Palakkad", 'n_clicks')],
-    prevent_initial_call=True
+    Output('district_buttons_container', 'children'),
+    Input('district_store', 'data')
 )
-def update_district_selection(all_clicks, kz_clicks, mlp_clicks, kn_clicks, tr_clicks, pkd_clicks):
-    ctx = callback_context
-    if not ctx.triggered:
-        return 'All', {}, {}, {}, {}, {}, {}
-    
-    button_id = ctx.triggered[0]['prop_id'].split('.')[0]
-    selected_district = button_id.replace('btn_', '')
-    
+def update_district_buttons(selected_district):
     # Define active and inactive styles
     active_style = {
         "width": "50px", "height": "50px", "borderRadius": "50%",
@@ -537,19 +564,44 @@ def update_district_selection(all_clicks, kz_clicks, mlp_clicks, kn_clicks, tr_c
         "transition": "all 0.3s ease"
     }
     
-    # Return styles for each button based on selection
-    styles = {}
-    districts = ['All', 'Kozhikode', 'Malappuram', 'Kannur', 'Thrissur', 'Palakkad']
-    for district in districts:
-        styles[f'btn_{district}'] = active_style if district == selected_district else inactive_style
+    buttons = []
     
-    return (selected_district, 
-            styles['btn_All'], 
-            styles['btn_Kozhikode'], 
-            styles['btn_Malappuram'], 
-            styles['btn_Kannur'], 
-            styles['btn_Thrissur'], 
-            styles['btn_Palakkad'])
+    # All button
+    buttons.append(html.Button(
+        "All", 
+        id="btn_All", 
+        n_clicks=0,
+        style=active_style if selected_district == "All" else inactive_style
+    ))
+    
+    # District buttons
+    for district, code in district_codes.items():
+        if district != "Unknown":  # Skip unknown districts
+            buttons.append(html.Button(
+                code, 
+                id=f"btn_{district}", 
+                n_clicks=0,
+                style=active_style if selected_district == district else inactive_style
+            ))
+    
+    return buttons
+
+# Callback to update district selection
+@app.callback(
+    Output('district_store', 'data'),
+    [Input(f"btn_All", 'n_clicks')] + 
+    [Input(f"btn_{district}", 'n_clicks') for district in district_codes if district != "Unknown"],
+    prevent_initial_call=True
+)
+def update_district_selection(all_clicks, *district_clicks):
+    ctx = callback_context
+    if not ctx.triggered:
+        return 'All'
+    
+    button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+    selected_district = button_id.replace('btn_', '')
+    
+    return selected_district
 
 # Main dashboard callback
 @app.callback(
@@ -587,31 +639,41 @@ def update_dashboard(selected_district, selected_month, selected_platform):
     ]
 
     # Platform Performance Chart
-    platform_chart = px.bar(
-        filtered_df, 
-        x="Platform", 
-        y="Total_Interactions", 
-        color="District",
-        title="Platform Performance by District",
-        barmode="group",
-        color_discrete_sequence=['#7A288A', '#2F2F4D', '#FFC0CB', '#E6E6FA', '#9D4BB5']
-    )
-    platform_chart.update_layout(
-        plot_bgcolor="white",
-        paper_bgcolor="white",
-        font_color="#2F2F4D",
-        title_font_color="#2F2F4D",
-        title_x=0.5,
-        showlegend=True
-    )
+    if not filtered_df.empty:
+        platform_chart = px.bar(
+            filtered_df, 
+            x="Platform", 
+            y="Total_Interactions", 
+            color="District",
+            title="Platform Performance by District",
+            barmode="group",
+            color_discrete_sequence=px.colors.qualitative.Set3
+        )
+        platform_chart.update_layout(
+            plot_bgcolor="white",
+            paper_bgcolor="white",
+            font_color="#2F2F4D",
+            title_font_color="#2F2F4D",
+            title_x=0.5,
+            showlegend=True
+        )
+    else:
+        # Empty chart if no data
+        platform_chart = px.bar(title="No data available for selected filters")
+        platform_chart.update_layout(
+            plot_bgcolor="white",
+            paper_bgcolor="white",
+            font_color="#2F2F4D",
+            title_font_color="#2F2F4D",
+            title_x=0.5
+        )
 
     # Platform Performance Cards (Circular Progress)
     platform_cards = []
     if not filtered_df.empty:
-        # Define target views per post (5,000 views per post as benchmark)
+        # Define target views per post
         TARGET_VIEWS_PER_POST = 2500
         
-        # Filter for only the 4 platforms we want
         platforms_to_show = ['Facebook', 'Instagram', 'YouTube', 'WhatsApp']
         
         for platform in platforms_to_show:
@@ -654,6 +716,8 @@ def update_dashboard(selected_district, selected_month, selected_platform):
             )
         
         platform_cards_content = rows
+    else:
+        platform_cards_content = html.Div("No data available", style={"textAlign": "center", "color": "#999"})
 
     # MAP or ENGAGEMENT CHART - Conditionally displayed
     map_engagement_section = []
@@ -664,19 +728,19 @@ def update_dashboard(selected_district, selected_month, selected_platform):
             # Prepare data for map
             map_data = []
             for district in district_coords.keys():
-                district_data = filtered_df[filtered_df['District'] == district]
-                if not district_data.empty:
-                    for platform in ['Facebook', 'Instagram', 'YouTube', 'WhatsApp']:
-                        platform_district_data = district_data[district_data['Platform'] == platform]
-                        if not platform_district_data.empty:
-                            map_data.append({
-                                'District': district,
-                                'Platform': platform,
-                                'Total_Interactions': platform_district_data['Total_Interactions'].sum(),
-                                'Total_Views': platform_district_data['Total_Views'].sum(),
-                                'lat': district_coords[district]['lat'],
-                                'lon': district_coords[district]['lon']
-                            })
+                if district in filtered_df['District'].values:
+                    district_data = filtered_df[filtered_df['District'] == district]
+                    if not district_data.empty:
+                        total_interactions = district_data['Total_Interactions'].sum()
+                        total_views = district_data['Total_Views'].sum()
+                        
+                        map_data.append({
+                            'District': district,
+                            'Total_Interactions': total_interactions,
+                            'Total_Views': total_views,
+                            'lat': district_coords[district]['lat'],
+                            'lon': district_coords[district]['lon']
+                        })
             
             if map_data:
                 map_df = pd.DataFrame(map_data)
@@ -687,20 +751,19 @@ def update_dashboard(selected_district, selected_month, selected_platform):
                     lat="lat",
                     lon="lon",
                     size="Total_Interactions",
-                    color="Platform",
+                    color="Total_Interactions",
                     hover_name="District",
                     hover_data={
                         "Total_Interactions": True,
                         "Total_Views": True,
-                        "Platform": True,
                         "lat": False,
                         "lon": False
                     },
-                    color_discrete_map=platform_colors,
+                    color_continuous_scale="Viridis",
                     size_max=30,
                     zoom=7,
                     height=400,
-                    title="Platform Penetration Across Districts"
+                    title="Social Media Engagement Across Districts"
                 )
                 
                 platform_map.update_layout(
@@ -730,39 +793,40 @@ def update_dashboard(selected_district, selected_month, selected_platform):
     
     else:
         # SHOW ENGAGEMENT CHART when single district selected
-        engagement_chart = px.scatter(
-            filtered_df,
-            x="Total_Posts",
-            y="Engagement_Rate",
-            size="Total_Interactions",
-            color="Platform",
-            hover_name="District",
-            title=f"Engagement Analysis - {selected_district}",
-            size_max=30,
-            color_discrete_sequence=['#7A288A', '#2F2F4D', '#FFC0CB', '#E6E6FA']
-        )
-        engagement_chart.update_layout(
-            plot_bgcolor="white",
-            paper_bgcolor="white",
-            font_color="#2F2F4D",
-            title_font_color="#2F2F4D",
-            title_x=0.5
-        )
-        
-        map_engagement_section = html.Div([
-            dcc.Graph(
-                id="engagement_chart", 
-                figure=engagement_chart, 
-                style={"height": "400px"}
+        if not filtered_df.empty:
+            engagement_chart = px.scatter(
+                filtered_df,
+                x="Total_Posts",
+                y="Engagement_Rate",
+                size="Total_Interactions",
+                color="Platform",
+                hover_name="Platform",
+                title=f"Engagement Analysis - {selected_district}",
+                size_max=30,
+                color_discrete_map=platform_colors
             )
-        ], style={
-            "width": "100%", 
-            "padding": "15px",
-            "background": "white",
-            "borderRadius": "12px",
-            "border": "1px solid #E6E6FA",
-            "boxShadow": "0 2px 8px rgba(47, 47, 77, 0.05)"
-        })
+            engagement_chart.update_layout(
+                plot_bgcolor="white",
+                paper_bgcolor="white",
+                font_color="#2F2F4D",
+                title_font_color="#2F2F4D",
+                title_x=0.5
+            )
+            
+            map_engagement_section = html.Div([
+                dcc.Graph(
+                    id="engagement_chart", 
+                    figure=engagement_chart, 
+                    style={"height": "400px"}
+                )
+            ], style={
+                "width": "100%", 
+                "padding": "15px",
+                "background": "white",
+                "borderRadius": "12px",
+                "border": "1px solid #E6E6FA",
+                "boxShadow": "0 2px 8px rgba(47, 47, 77, 0.05)"
+            })
 
     return platform_chart, platform_cards_content, kpis, map_engagement_section
 
